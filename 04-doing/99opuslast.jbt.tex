@@ -1,0 +1,169 @@
+
+\section{Modifica nel sorgente dell'AOSP Source}\label{sec:modifaosp}
+\textit{In quanto ora mi occupo della modifica del codice sorgente 
+AOSP, faccio riferimento alla Sottosezione \vref{subsec:compileaosp} per 
+la procedura di compilazione.}
+\bigskip
+
+\begin{enumerate}
+\item Cercando di risolvere il problema descritto nella sezione precedente,
+	provo ad analizzare i messaggi lasciati nel LogCat dai \textit{service}
+	di sistema. In quanto noto un Segmentation Fault a livello di 
+	\texttt{\small AudioTrack}, ovvero:
+	\begin{bash}
+F/libc ( 4352): Fatal signal 11 (SIGSEGV) at 0xdeadbaad (code=1), thread 4375 (AudioTrack)
+\end{bash}
+	inizio ad analizzare questo servizio, i cui sorgenti sono:
+	\begin{center}
+	\texttt{\small \AOSP/frameworks/base/media/java/android/media/AudioTrack.java}
+	
+	\texttt{\small \AOSP/frameworks/av/media/libmedia/AudioTrack.cpp}
+	
+	\texttt{\small \AOSP/frameworks/base/core/jni/android\_media\_AudioTrack.cpp}
+	\end{center}
+	Tuttavia successivamente noto che, a livello di sorgente \textit{wilhelm}, non
+	si utilizza questo servizio ma bensì un'istanza della classe \texttt{\small
+	AudioRecord}. Inoltre noto che questo servizio non è utilizzato per il
+	campionamento dell'audio, ma per la riproduzione
+	\footnote{Cinese: \url{http://www.cnblogs.com/innost/archive/2011/01/09/1931457.html}}.
+
+\item Effettuando l'esecuzione contemporanea di due applicazioni all'interno di
+	un dispositivo Android, sia sull'Olivetti Olipad sia sul Galaxy Nexus,
+	si sono riscontrati degli errori. Nel
+	secondo dispositivo si è ottenuto in particolare il seguente risultato
+	di errore:
+\begin{bash}
+W/AudioPolicyManagerBase(  126): startInput() input 173 failed: other input already started
+F/libc    ( 4352): Fatal signal 11 (SIGSEGV) at 0xdeadbaad (code=1), thread 4375 (AudioTrack)
+W/AudioFlinger(  126): RecordThread: buffer overflow
+\end{bash}
+        Questo messaggio di errore viene generato dal file:
+\begin{center}
+\texttt{\small \AOSP/hardware/libhardware\_legacy/audio/AudioPolicyManagerBase.cpp}
+\end{center}
+        ed in particolare dal seguente frammento di codice:
+\begin{java}
+// refuse 2 active AudioRecord clients at the same time
+if (getActiveInput() != 0) {
+    ALOGW("startInput() input %d failed: other input already started", input);
+    return INVALID_OPERATION;
+}
+\end{java}
+	che, come si può vedere, limita l'esecuzione ad una sola fonte attiva.
+	Provo ad effettuare solamente questa modifica al sorgente
+	AOSP, e  ricompilo il tutto.
+	
+\begin{figure}[!t]
+\begin{cpp}[mathescape=true]
+$\drsh$ open_snd_dev() [.../pjsua-lib/pjsua_aud.c]
+  $\drsh$ pjmedia_snd_port_create2() [.../pjmedia/sound_port.c]
+    $\drsh$ start_sound_device() 
+      $\drsh$ pjmedia_aud_stream_start [.../pjmedia-audiodev/audiodev.c]
+        $\drsh$ pjmedia_aud_stream_start [pjmedia-audiodev/audiodev.c]
+           { status = strm->op->start(strm) } [dove start = strm_start]
+\end{cpp}
+\caption{\textit{Ricostruzione della chiamata della funzione}.}
+\end{figure}
+
+\item Una volta portata l'esecuzione dei due programmi, noto che il chiamante
+	rimane in attesa della risposta del chiamato, che si blocca durante il
+	processo di instaurazione della chiamata, ed in particolare fornisce il
+	seguente output:
+\begin{bash}
+16:46:58.417    pjsua_aud.c  ..Conf connect: 3 --> 0
+16:46:58.417    pjsua_aud.c  ...Set sound device: capture=-1, playback=-2
+16:46:58.417    pjsua_app.c  ....Turning sound device ON
+16:46:58.417    pjsua_aud.c  ....Opening sound device PCM@16000/1/20ms
+16:46:58.418   opensl_dev.c  .....Creating OpenSL stream
+16:46:58.421   opensl_dev.c  .....Recording stream type 1, SDK : 16
+16:46:58.437    ec0x1d07dd8  .....AEC created, clock_rate=16000, channel=1, samples per frame=320, tail length=200 ms, latency=100 ms
+16:46:58.438   opensl_dev.c  .....Starting OpenSL stream..
+\end{bash} 
+	Confrontando questo output con quello di esecuzione con successo,
+	noto che non viene visualizzato il messaggio:
+	\begin{center}
+	\textit{OpenSL stream started}
+	\end{center}
+	Ciò significa  che l'esecuzione rimane bloccata all'interno della 
+	funzione \texttt{\small strm\_start} definita in \texttt{\small opensl\_dev.c}.
+	Aggiungendo successivamente delle stampe di controllo, che l'esecuzione
+	si blocca subito dopo aver eseguito il metodo:
+\begin{clang}
+result = (*stream->recordRecord)->SetRecordState(
+                     stream->recordRecord, SL_RECORDSTATE_RECORDING);
+\end{clang}
+	Posso quindi osservare come la funzione \texttt{\small SetRecordState} sia
+	definita all'interno del file \texttt{\small IRecord.c} all'interno della
+	libreria \textit{wilhelm}, la quale a sua volta richiama la funzione 
+	\texttt{\small android\_audioRecorder\_setRecordState} definita in 
+	\texttt{\small AudioRecorder\_to\_android.cpp}, mostrando così ancora una
+	volta come le limitazioni avvengano proprio a livello di \textit{service}.
+	
+	In quest'ultimo metodo in particolare per avviare la registrazione
+	si invocherà la parte di codice attinente alla registrazione, ovvero
+\begin{clang}
+ar->mAudioRecord->start()
+\end{clang}
+	dove in particolare l'oggetto \texttt{\small mAudioRecord} è di tipo
+	\texttt{AudioRecord()} come definito all'interno del namespace \texttt{\small android}.
+	
+
+\item Osservando  nel sorgente di come, all'interno di \texttt{\small AudioSystem.cpp}
+	venga effettuata la creazione di una sola istanza del client tramite il 
+	quale accedere al servizio \texttt{\small AudioFlinger}, e reputando in
+	prima analisi a questa gestione il problema da me riscontrato, faccio in
+	modo di modificare il singleton proposto dalle seguenti variabili:
+\begin{cpp}
+// client singleton for AudioFlinger binder interface
+sp<IAudioFlinger> AudioSystem::gAudioFlinger;
+sp<AudioSystem::AudioFlingerClient> AudioSystem::gAudioFlingerClient;
+\end{cpp}
+	in nuove istanze da generare ad ogni nuova chiamata.
+	
+	
+	In quanto questo oggetto non è mai acceduto se non nella funzione dell'ottenimento
+	dell'AudioFlinger, ritengo possibile la modifica di cui sopra,  certo che la variabile
+	\texttt{\small gAudioFlinger} sia acceduta solamente all'atto della creazione
+	e dell'invocazione del servizio. Tuttavia questo tentativo peggiorerà
+	la situazione, in quanto non sarà nemmeno completata la procedura di 
+	esecuzione dei \textit{service} di sistema. Decido quindi di approfondire
+	l'analisi del sorgente di Android.
+
+\item Dopo aver svolto l'analisi del sorgente riportata in \vref{subsec:mischeWilhelm},
+	noto come la limitazione di un solo ``registratore'' da microfono sia 
+	dovuta ad un problema ben più profondo, insito proprio all'interno
+	della struttura del sistema operativo: manca infatti un servizio di 
+	caching che permetta di preservare per altri servizi le informazioni
+	raccolte per il microfono.
+	
+	Riprovando l'esecuzione di \texttt{\small pjsua} con un client dove si è
+	impostato di non interagire con le librerie audio di sistema, ovvero
+	tramite il flag \texttt{\small --null-dev}, non si sono riscontrati problemi
+	nella fase di registrazione del file audio proveniente dal bridge di 
+	comunicazione.
+
+\end{enumerate}
+
+\section{Valutazioni sull'impossibilità di perseguire alcune scelte}
+\subsection{Sull'Emulatore Android}\label{subsec:impossibemuandroid}
+Dopo aver effettuato il \textit{rooting} dell'emulatore allo scopo di poter usufruire dei permessi del superutente, osservo i messaggi di sistema prodotti dal LogCat durante l'esecuzione del programma, allo scopo di individuare preventivamente i problemi nell'esecuzione del programma \texttt{pjsua}. Questi ultimi tuttavia non si sono fatti attendere: di fatti questa volta, benché tale binario venisse eseguito correttamente sugli altri due dispositivi reali, l'esecuzione di quest'ultimo sull'emulatore indicava come questa volta il problema fosse imputabile alla mancata emulazione dei driver audio. Riporto di seguito l'output da me riscontrato:
+
+\begin{bash}  
+E/AudioHardware(   38): Error opening input channel
+W/AudioHardwareInterface(   38): getInputBufferSize bad sampling rate: 16000
+E/AudioRecord(  504): Unsupported configuration: sampleRate 16000, format 1, channelCount 1
+E/libOpenSLES(  504): android_audioRecorder_realize(0x2300a0) error creating AudioRecord object
+W/libOpenSLES(  504): Leaving Object::Realize (SL_RESULT_CONTENT_UNSUPPORTED)
+\end{bash}
+
+Questo problema mi ha costretto ad abbandonare l'emulatore per la prosecuzione del testing,
+e di proseguire il testing tramite l'utilizzo di due device reali all'interno di una rete locale.
+
+\subsection{Sul Tablet Olivetti Olipad 110}\label{subsec:impossiboliandroid}
+Nel momento in cui si è reso necessario per motivi strutturali dell'AOSP source ottenere un'immagine 
+allo scopo di effettuare il flashing del dispositivo, si è immediatamente scartata 
+l'ipotesi di procedere su questo il tentativo di porting. Tuttavia per questo dispositivo
+né è possibile ottenere i driver da aggiungere a tale sorgente, né
+è disponibile una \textit{release} del kernel ufficiale. Per ciò ho preferito continuare
+il testing dell'esecuzione delle due istanze di \texttt{pjsua} all'interno di uno
+stesso dispositivo tramite il Galaxy Nexus.

@@ -1,0 +1,36 @@
+#!/bin/sh
+#...Omissis
+TARGET_HOST="arm-linux-androideabi"
+TC_DIR=${TARGET_HOST}
+BUILD_MACHINE="linux-x86"
+#...Omissis
+
+if test "x$API_LEVEL" = "x"; then
+  API_LEVEL=`ls ${ANDROID_NDK}/platforms/ | sed 's/android-//' | sort -gr | head -1`
+  echo "$F: API_LEVEL not specified, using android-${API_LEVEL}"
+fi
+
+ANDROID_TC="${ANDROID_NDK}/toolchains/${TC_DIR}-4.6/prebuilt/${BUILD_MACHINE}"
+if test ! -d ${ANDROID_TC}; then
+  echo "$F error: unable to find directory ${ANDROID_TC} in Android NDK"
+  exit 1
+fi
+
+export ANDROID_SYSROOT="${ANDROID_NDK}/platforms/android-${API_LEVEL}/arch-arm"
+if test ! -d ${ANDROID_SYSROOT}; then
+  echo "$F error: unable to find sysroot dir ${ANDROID_SYSROOT} in Android NDK"
+  exit 1
+fi
+
+export CC="${ANDROID_TC}/bin/${TARGET_HOST}-gcc"
+export CXX="${ANDROID_TC}/bin/${TARGET_HOST}-g++"
+
+export LDFLAGS=" -nostdlib -L${ANDROID_SYSROOT}/usr/lib/"
+export LIBS=" -lc -lgcc -lm"
+export CFLAGS=" -Wl,-Bstatic -lm -I${ANDROID_SYSROOT}/usr/include"
+export CPPFLAGS="${CFLAGS}"
+export CXXFLAGS=" -Wl,-Bstatic -lm --sysroot=${ANDROID_SYSROOT}"
+
+#Omissis
+
+./configure --host=${TARGET_HOST} --disable-video 

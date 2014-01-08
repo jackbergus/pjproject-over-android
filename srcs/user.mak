@@ -1,0 +1,6 @@
+export INSANITY_OBJECT = /path/to/crt0.o
+export CC_LDFLAGS += $(INSANITY_OBJECT)
+export APP_LDLIBS += $(INSANITY_OBJECT)
+export PJ_LDLIBS += $(INSANITY_OBJECT)
+export PJ_CFLAGS += $(INSANITY_OBJECT)
+export _CFLAGS += $(INSANITY_OBJECT)

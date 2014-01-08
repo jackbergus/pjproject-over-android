@@ -1,0 +1,34 @@
+\chapter{Pjproject - modifiche al codice}
+\minitoc\mtcskip
+
+Per poter effettuare la compilazione della libreria e delle applicazioni in 
+ambiente Android tramite la versione \it{trunk} di \it{pjproject}, è stato 
+necessario effettuare una patch al sorgente.
+
+Si consiglia di
+eseguire prima il comando:
+%center
+\tt{\small patch -{}-dry-run -p1 -i PATCH}
+.%
+per verificare l'effettiva conformità della patch al sorgente senza applicarla, 
+e quindi ripetere lo stesso comando omettendo il flag \tt{\small -{}-dry-run}.
+Le modifiche minori attinenti al processo di configurazione del crosscompilatore
+e dell'aggunta degli oggetti binari è stata riportata nella Sezione \vref{sec:tentconfcross}.
+
+
+
+\section{Gestione dei file audio}
+\subsection{Lettura degli header del file WAVE}\label{subsec:appreadwave}
+Qui di seguito riporto il codice che ho effettuato per la lettura dei primi header
+dei file WAVE.
+
+\lstinputlisting[language=C, caption=Lettura header WAVE]{srcs/wave_c_sample.c}
+
+\subsection{\tt{\small conference.c}}\label{subsec:conferencec}
+Oltre alle altre modifiche minori che ho già avuto modo di illustrare, riporto
+qui di seguito il codice completo delle funzioni che sono state da me modificate
+all'interno del file \tt{\small conference.c}. Le parti da me modificate sono
+marcate da \tt{\small jb09}.
+
+\lstinputlisting[language=C, caption= Modifiche a conference.c]{srcs/new_conference.c}
+

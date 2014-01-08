@@ -1,0 +1,18 @@
+#!/bin/bash
+export ANDROID_NDK=/home/jack/android-ndk-r8b
+export API_LEVEL=14
+export PATH=$PATH:$ANDROID_NDK
+
+#Eventuale riconfigurazione degli script
+cp -av /usr/share/misc/config.guess ./
+cp -av /usr/share/misc/config.sub  ./
+
+autoconf aconfigure.ac > aconfigure
+chmod +x aconfigure
+chmod +x configure
+
+echo "#define PJ_CONFIG_ANDROID 1
+#include <pj/config_site_sample.h>" > pjlib/include/pj/config_site.h
+
+./configure-android --disable-floating-point --disable-large-filter $* 
+

@@ -1,0 +1,6 @@
+\appendix
+\chapter{Android AOSP}
+\minitoc\mtcskip
+\section{Definizione dell'\textsc{Android Init Language}}\label{sec:appxINIT}
+\lstinputlisting[caption=\d AOSP/system/core/init/readme.txt]{srcs/readme_init.txt}
+

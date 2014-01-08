@@ -1,0 +1,191 @@
+
+\subsubsection{Registrazione dei servizi lato Java}\label{subsec:regserv}
+Il questa sottosezione voglio mostrare come da codice Java sia possibile
+l'interazione col Binder Driver, allo scopo di effettuare la registrazione
+dei servizi, durante la quale avviene l'instanziazione di oggetti C++.
+Quando inoltre vorrò distinguere le classi Java da quelle C++, postporrò
+alle prime il pedice $_\mathtt{J}$ ed alle seconde $_\mathtt{C}$.
+\begin{list}{}{
+  \setlength{\topsep}{0pt}
+  \setlength{\leftmargin}{0pt}%
+  \setlength{\rightmargin}{0pt}%
+  \setlength{\listparindent}{0pt}%
+  \setlength{\itemindent}{0pt}%
+  \setlength{\parsep}{0pt}%
+ }%
+\item[]
+\thispagestyle{empty}
+%figure:=p
+\centering
+\subfloat[][\it{Meccanismo di registrazione di un Service. }]{\label{subfig:registrfigure}\includegraphics[scale=0.4]{img/korea/registration.png}}\\
+\subfloat[][\it{Visione High-Level del meccanismo di IPC. }]{\includegraphics[scale=0.43]{img/korea/transact.png}}\\
+\caption{\it{Overview} generale dei meccanismi di comunicazione predisposti dal
+Binder.
+\url{http://www.aesop.or.kr/Board_Documents_Android_Frameworks/34984}}
+\label{fig:androidbinderoverview}
+.%
+\end{list}
+
+Mi focalizzerò ora su come avvenga la registrazione di un \it{service} lato Java,
+prendendo ad esempio quella del \tt{\small PermissionController} definito
+all'interno dell'\tt{\small ActivityManagerService}, il quale tra l'altro si 
+occupa anche della gestione degli eventi attinenti alle \it{Activity} delle
+API Java. All'atto dell'inizializzazione del servizio \tt{\small ActivityManagerService},
+oltre alle restituzione del \it{context} di sistema tramite l'inizializzazione
+\tt{\small init},  avviene la chiamata alla funzione \tt{\small setSystemProcess}
+che inizializza il servizio \tt{\small permission}.
+
+Osservando la  Figura \vref{fig:androidbinderoverview}, possiamo ottenere una
+visione generale di come ciò possa avvenire: sia il client sia il \it{service}
+condividono un'area di memoria grazie alla predisposizione dei
+nodi tramite i quali effettuare la comuinicazione.
+
+
+%figure:=p
+\centering
+\subfloat[][\it{Gerarchia delle classi lato Java/Service. }]{\includegraphics[scale=0.43]{img/modelio/Server.png}}\\
+\subfloat[][\it{Gerarchia delle classi lato codice chiamante. }]{\label{subfig:clientggl}\includegraphics[scale=0.43]{img/modelio/Client.png}}\\
+\caption{Visione \it{High-level} della gerarchia delle classi del sistema di IPC.}
+\label{fig:highlevelhierarchy}
+.%
+
+In quanto:
+%center
+\tt{\small Binder$_\mathtt{J}$ <: IPermissionController.Stub$_\mathtt{J}$ <: PermissionController$_\mathtt{J}$}
+.%
+il costruttore di \tt{\small PermissionController} provocherà l'invocazione
+dei supercostruttori, tra i quali compare quello della classe madre \tt{\small Binder}.
+Quest'ultimo provoca l'invocazione del metodo nativo \tt{\small init()}
+che corrisponde alla chiamata della funzione \tt{\small android\_os\_Binder\_init},
+dove avviene l'associazione tra la classe Java e l'oggetto nativo \tt{\small JavaBBinderHolder}.
+
+Quest'oggetto a sua volta conterrà, tramite la variabile \tt{\small mBinder},
+un riferimento all'oggetto \tt{\small JavaBBinder$_\mathtt{C}$} che, estensione
+di \tt{\small BBinder$_\mathtt{C}$}, conterrà un riferimento \tt{\small mObject}
+all'oggetto Java chiamante.
+
+Faccio ora riferimento al codice di \tt{\small ServiceManager} fornito nel Listato
+\vref{lst:servicemanagerjava};
+passando quindi alla procedura di ottenimento del \it{Service Manager} lato Java,
+ed in particolare all'invocazione del metodo nativo \tt{\small getContextObject()}
+implementato nel metodo \tt{\small android\_os\_BinderInternal\_getContextObject},
+subito dopo aver ottenuto il riferimento dell'oggetto \tt{\small BpServiceManager}, lo
+si processa all'interno del metodo \tt{\small javaObjectforIBinder} dove, dopo
+aver saltato i primi due controlli ed aver verificato il terzo, si creerà un
+nuovo oggetto Java \tt{\small BinderProxy$_\mathtt{J}$} che memorizzerà al
+suo interno l'oggetto nativo ottenuto, e tramite il quale effettuare la richiesta
+al Binder.
+
+
+
+%algorithm:=p
+\lstinputlisting[caption=$ $ServiceManager.java,label=lst:servicemanagerjava,language=Java]{srcs/ServiceManager.java}
+.%
+
+Riassumendo i passi successivi, non necessari per l'immediato completamento
+della tesi\footnote{Le informazioni complete sono tuttavia fornite all'interno
+del sito in Cinese \url{http://blog.csdn.net/tjy1985/article/details/7408698}.}, l'oggetto
+ottnenuto lato Java tramite lo strato JNI verrà poi utilizzato come argomento
+per il costruttore della classe \tt{\small ServiceManagerProxy$_\mathtt{J}$}; 
+quest'ultimo oggetto instaurerà poi lato Java l'effettiva comunicazione con il 
+driver, grazie all'associazione di questo all'attributo \tt{\small mRemote}.
+
+Volendo ora mostrare come sia possibile registrare il servizio \tt{\small PermissionController},
+l'invocazione di \tt{\small addService} provocherà la chiamata di un metodo
+definito all'iinterno di \tt{\small ServiceManagerNative.java}, il quale
+causerà la transazione sull'oggetto \tt{\small mRemote}, provocando una
+procedura  di inserimento dell'oggetto \tt{\small BBInder$_\mathtt{C}$}, 
+non dissimile a quella già descritta per i \it{service} nativi.
+In fine si può osservare da codice come l'oggetto effettivamente fornito
+al Binder sia quello precedentemente memorizzato in \tt{\small mObject}.
+
+In questo modo ho mostrato come sia possibile, da codice Java, generare oggetti
+nativi che in seguito possano far riferimento all'oggetto generante.
+
+%algorithm:=p
+\begin{cpp}[ caption=$ $ Alcune funzioni JNI in \tt{\small android\_util\_Binder.cpp},label=lst:androidutilbind]
+static void android_os_Binder_init(JNIEnv* env, jobject obj)
+{
+    JavaBBinderHolder* jbh = new JavaBBinderHolder();
+    if (jbh == NULL) {
+        jniThrowException(env, "java/lang/OutOfMemoryError", NULL);
+        return;
+    }
+    ALOGV("Java Binder \%p: acquiring first ref on holder \%p", obj, jbh);
+    jbh->incStrong((void*)android_os_Binder_init);
+    env->SetIntField(obj, gBinderOffsets.mObject, (int)jbh);
+}
+
+jobject javaObjectForIBinder(JNIEnv* env, const sp<IBinder>& val)
+{
+    if (val == NULL) return NULL;
+
+    if (val->checkSubclass(&gBinderOffsets)) { ... }
+    jobject object = (jobject)val->findObject(&gBinderProxyOffsets);
+    if (object != NULL) { ... }
+    object = env->NewObject(gBinderProxyOffsets.mClass, gBinderProxyOffsets.mConstructor);
+    if (object != NULL) {
+        LOGDEATH("objectForBinder \%p: created new proxy \%p !\n", val.get(), object);
+        // The proxy holds a reference to the native object.
+        env->SetIntField(object, gBinderProxyOffsets.mObject, (int)val.get());
+        val->incStrong(object);
+        //Omissis
+    }
+}
+
+sp<IBinder> ibinderForJavaObject(JNIEnv* env, jobject obj)
+{
+    if (obj == NULL) return NULL;
+
+    if (env->IsInstanceOf(obj, gBinderOffsets.mClass)) {
+        JavaBBinderHolder* jbh = (JavaBBinderHolder*)
+            env->GetIntField(obj, gBinderOffsets.mObject);
+        return jbh != NULL ? jbh->get(env, obj) : NULL;
+    }
+
+    //Omissis
+}
+
+static jobject android_os_BinderInternal_getContextObject(JNIEnv* env, jobject clazz)
+{
+    sp<IBinder> b = ProcessState::self()->getContextObject(NULL);
+    return javaObjectForIBinder(env, b);
+}
+\end{cpp}
+.%
+
+\subsubsection{Invocazione di metodi Java da Native Code}\label{subsec:invoke}
+%figure:=thp
+\centering
+\includegraphics[scale=0.65]{img/modelio/cpplevel.png}
+\caption{\it{Visione dell'interazione tra oggetti interagenti nel corso dell'IPC per i}
+service \it{Java}.}
+\label{fig:binderlowlevel}
+.%
+Voglio mostrare come sia possibile effettuare l'invocazione del metodo \tt{\small checkPermission}
+lato Java da parte di codice nativo.
+
+Sapendo che:
+%center
+\tt{\small Binder$_\mathtt{J}$ <: IPermissionController.Stub$_\mathtt{J}$ <: PermissionController$_\mathtt{J}$}
+.%
+abbiamo che tale metodo dichiarato all'interno della classe \tt{\small PermissionController}
+mostrata in precedenza nel Listato \vref{lst:stubipermissioncontroller}, verrà
+richiamato dal metodo \tt{\small onTransact} definito in \tt{\small Stub},
+a sua volta richiamato dal metodo \tt{\small executeTransact} definito all'interno
+della classe \tt{\small Binder}.
+
+Ricercando ora come tale metodo possa essere richiamato a livello di JNI,
+si scopre che questa invocazione viene consentita all'interno del metodo
+\tt{\small onTransact} come definito nella classe \tt{\small JavaBBinder},
+a sua volta richiamato dal metodo \tt{\small transact} definito all'interno
+della classe \tt{\small BBinder}, dove:
+%center
+\tt{\small BBinder$_\mathtt{C}$ <: JavaBBinder$_\mathtt{C}$}
+.%
+
+Questo metodo verrà poi richiamato da del \it{main loop} fornito lato JNI dal 
+\tt{\small system\_server}, come già mostrato in precedenza per i \it{service}
+nativi.
+
+

@@ -1,0 +1,275 @@
+
+\chapter{Tool SDK ed NDK}
+\minitoc\mtcskip
+
+
+\section{Script di interazione con l'SDK}\label{sec:scriintSDK}
+\begin{bash}
+#!/bin/bash
+# Giacomo Bergami: questo file accede in modo uniforme ai programmi/script per
+# la gestione dell'emultatore, del server e dei dispositivi
+NDK=`pwd`/android-ndk-r8b
+SDK=`pwd`/android-sdk-linux
+
+echo "Using for NDK ${NDK}"
+echo "Using for SDK ${SDK}"
+
+if [[ $1 == "list-devices" ]]; then
+	$SDK/tools/android list avds
+elif [[ $1 == "new-device" ]]; then
+	$SDK/tools/mksdcard $2 $3; 
+	$SDK/tools/android create avd -n $2 -t $5 -sdcard $4
+elif [[ $1 == "run-device" ]]; then
+	$SDK/tools/emulator -avd $2 -partition-size 2047
+elif [[ $1 == "running-devices" ]]; then
+	$SDK/platform-tools/adb devices
+elif [[ $1 == "linux-ports" ]]; then
+	lsof -i :$2
+elif [[ $1 == "linux-procs" ]]; then
+	lsof +p $2
+elif [[ $1 == "adb" ]]; then
+	$SDK/platform-tools/adb ${@:2}
+elif [[ $1 == "dadb" ]]; then
+	$SDK/platform-tools/adb -s `./getdev` ${@:2}
+elif [[ $1 == "dcpu" ]]; then
+	$SDK/platform-tools/adb -s `./getdev` ${@:2} shell cat /proc/cpuinfo
+elif [[ $1 == "android" ]]; then
+	$SDK/tools/android ${@:2}
+elif [[ $1 == "ndk-build" ]]; then
+	$SDK/tools/android update project -p . -s
+	$NDK/ndk-build
+	ant debug 
+else
+	echo "$0 list-devices                                ottiene la lista degli emulatori creati"
+	echo "$0 new-device name cardsize cardpos kernelver  crea un nuovo dispositivo"
+	echo "$0 run-device name                             esegue un nuovo dispositivo"
+	echo "$0 running-devices                             ottiene la lista dei dispositivi in esecuzione"
+	echo "$0 linux-ports port	                     ottiene la lista dei processi sulla data porta"
+	echo "$0 linux-procs pid                             ottiene i fd di un processo"
+	echo "$0 adb ...                                     per gli altri comandi di interazione col dispositivo"
+fi;
+\end{bash}
+
+\section{Tentativi di configurazione per la crosscompilazione}\label{sec:tentconfcross}
+Per una descrizione dettagliata delle problematiche riscontrate, faccio riferimento
+alla Sezione \vref{sec:conscrossocmp}.
+
+\subsection{Primi passi ed introduzione dello script \texttt{\small myConf}}
+Effettuo la definizione dello script \texttt{\small myConf} per l'\textit{export} delle variabili
+necessarie allo script \texttt{configure-android}, e più preesistente:
+\begin{bash}
+#!/bin/bash
+export ANDROID_NDK=/home/jack/android-ndk-r8b
+export API_LEVEL=5
+export PATH=$PATH:$ANDROID_NDK
+
+#cp -av /usr/share/misc/config.guess ./
+#cp -av /usr/share/misc/config.sub  ./
+
+autoconf aconfigure.ac > aconfigure
+chmod +x aconfigure
+chmod +x configure
+
+echo "#define PJ_CONFIG_ANDROID 1
+#include <pj/config_site_sample.h>" > pjlib/include/pj/config_site.h
+
+./configure-android --disable-floating-point --disable-large-filter $* 
+\end{bash}
+
+
+In particolare lo script \texttt{configure-android} è stato modificato alla fine nel modo seguente:
+\begin{bash}
+export LDFLAGS=" -nostdlib -L${ANDROID_SYSROOT}/usr/lib/"
+export LIBS=" -lc -lgcc -lm"
+export CFLAGS=" -Wl,-Bstatic -lm -I${ANDROID_SYSROOT}/usr/include"
+export CPPFLAGS="${CFLAGS}"
+export CXXFLAGS=" -Wl,-Bstatic -lm --sysroot=${ANDROID_SYSROOT}"
+
+./configure --host=${TARGET_HOST} --disable-video
+\end{bash}
+
+
+In particolare si è continuato ad utilizzare il \textit{toolchain} \texttt{\small arm-linux-androideabi-4.4.3}.
+In questo caso si sono presentati i seguenti problemi:
+\begin{itemize}
+\diam Il linker non è in grado di trovare il simbolo \texttt{\_start} ed applica
+	conseguentemente il defaulting: la risoluzione di questo problema è stata 
+	già illustrata nella Sezione \vref{sec:assstart}, assieme alla valutazione
+	dell'errore  \textit{Unknown EABI object attribute 44}.
+\diam Effettuando il linking statico non si trova la libreria OpenSLES: aggiungo
+	quindi il flag \texttt{\small -lOpenSLES} e cambio il numero delle api alla
+	versione 14. 
+\end{itemize}
+
+\subsection{Permanenza dell'errore di Segmentation Fault nell'esecuzione}
+Per cercare di rimediare all'errore di Segmentation Fault, ho tentato di 
+apportare le seguenti modifiche:
+\begin{itemize}
+\item Si continua ad ottenere \texttt{\small Segmentation Fault} senza aver specificato
+	i flag \texttt{\small --disable-floating-point --disable-large-filter} in fase di 
+	configurazione, dopo aver sostituito \texttt{\small -Wl,-Bstatic} con
+	\texttt{shared} e senza aver ancora linkato il binario \texttt{crt0.o}
+\item Anche dopo l'aggiunta dei flag \texttt{\small --disable-floating-point --disable-large-filter},
+	si ha l'interruzione dell'applicazione con \texttt{\small SIGFAULT}: l'errore
+	è quindi indipendente dalla gestione numerica.
+\item Cambiando la configurazione Android in questo modo:
+\begin{bash}
+export LDFLAGS=" -nostdlib -L${ANDROID_SYSROOT}/usr/lib/"
+export LIBS=" -lc -lgcc -lm "
+export CFLAGS=" -Wl,-Bstatic  -lm -I${ANDROID_SYSROOT}/usr/include"
+export CPPFLAGS="${CFLAGS}"
+export CXXFLAGS=" -Wl,-Bstatic -lm --sysroot=${ANDROID_SYSROOT}"
+\end{bash}
+       sono costretto ad omettere il flag \texttt{\small -lOpenSLES}, in quanto
+       altrimenti la compilazione viene terminata con insuccesso nella fase
+       iniziale di escuzione dello script di configurazione. 
+\end{itemize}
+
+\subsection{Stadio intermedio di configurazione}
+Fornisco di seguito gli script di configurazione che portano alla corretta
+esecuzione di \texttt{pjtest}, ma non all'esecuzione di \texttt{pjsua} per l'errata 
+lettura degli argomenti come parametro: come si può riscontrare dalla configurazione,
+ciò era dovuto al fatto che importavo il file \texttt{crt0.o} solamente all'interno
+di \texttt{\small PJ\_LDLIBS}. Queste configurazioni inoltre fanno ancora riferimento
+al trunk di \textit{pjproject}, e non al \textit{branch} per Android.
+
+\lstinputlisting[language=bash,caption= user.mak]{srcs/user_intermediate.mak}
+
+Come possiamo notare da questo script \texttt{\small myConf}, sono appunto costretto
+a disabilitare alcuni supporti per i codec audio in quanto questi non erano
+supportati dalla versione \textit{trunk}.
+
+\lstinputlisting[language=bash,caption= myConf]{srcs/myConf_intermediate}
+
+Riporto inoltre lo script \texttt{\small configure-android} di seguito:
+
+\lstinputlisting[language=bash,caption= configure-android,label=alg:confandroid]{srcs/configure-android_intermediate}
+
+\section{Sorgente C del programma Client/Server d'esempio}\label{sec:cliserv}
+\lstinputlisting[language=C,caption= Client/Server d'esempio]{srcs/cliserver.c}
+
+\section{NDK ed Assembly per la definizione di \texttt{\_start}}\label{sec:assstart}
+In seguito si fornisce la definizione dell'entry point \texttt{\_start}, che è 
+possibile ottenere dal disassembling dei binari forniti da Google.
+\lstinputlisting[language={[x86masm]Assembler}]{srcs/crt0.s}
+
+Si è scoperto, in seguito alla scrittura di questo sorgente, che esso era anche
+contenuto all'interno degli oggetti \texttt{\small crtbegin\_static.o} e 
+\texttt{\small crtbegin\_dynamic.o}. Questo è stato però notato solamente dopo
+aver letto i sorgenti Android di \textsc{Bionic}. Questi oggetti tuttavia non
+sono ancora contenuti all'interno della libc, né viene precisato all'interno
+del documento \texttt{\small CHANGES.html} che sia effettivamente necessario linkare questi oggetti 
+per ottenere l'esecuzione di \texttt{\small main}.
+\begin{quotation}
+\textit{
+Fixed \_\_start (in crtbegin\_dynamic/static.o) to "call \_\_libc\_init" instead of
+  "jump \_\_libc\_init", otherwise stack unwinding past \_\_libc\_init may get wrong return
+  address and crash the program or do wield things.  With "call", return address is pushed
+  on stack and unwinding stops correctly at \_start.  Note that \_\_libc\_init never returns, so
+  this fix won't affect normal program execution.  But just in case it "does" return,
+  jump to address 0 and halt.
+}
+\end{quotation}
+Tuttavia bisogna notare che il riconoscimento della funzione \texttt{\small \_start}
+è effettuata unicamente nella versione 4.6 della versione del tool di crosscompilazione
+dell'NDK, all'interno della quale sono però presenti dei 
+\texttt{\small crtbegin\_dynamic.o} che, se inclusi nella versione 4.6, portano al
+seguente errore:
+\begin{bash}
+Unknown EABI object attribute 44
+\end{bash}
+Questo in genere avviene quando le versioni dello stesso cross-compilatore non
+coincidono: per questo si è reso necessario riutilizzare l'oggetto definito sopra.
+
+Si è inoltre notato, tramite la non corretta modifica dello script di crosscompilazione
+di Pjproject, che una non corretta inclusione di questo binario, oltre a lasciare
+al crosscompilatore la decisione di quale funzione utilizzare in luogo della
+funzione \texttt{\small \_main}, non consente di inzializzare correttamente gli
+argomenti da passare alla funzione \texttt{\small main}: in particolare il valore di
+\texttt{\small argc} non coinciderà con l'effettivo numero di parametri passati, ed
+inoltre \texttt{\small argv} conterrà array di tutti puntatori a \texttt{\small NULL}.
+
+\section{Rooting di Olivetti Olipad}\label{sec:rootolipad_src}
+Questo sorgente è tratto dal Tool \texttt{Medion LifeTab P9514-Root Tool}. Lo script
+è stato tradotto dal Tedesco in Inglese.
+\lstinputlisting[language=bash]{srcs/root-olitab.sh}
+
+Qui di seguito mostro invece le opzioni che possono essere utilizzate al fine
+di interagire con il tool \texttt{nvflash}:
+\begin{bash}
+Nvflash started
+nvflash action [options]
+action (one or more) =
+   --help (or -h)
+       displays this page
+   --cmdhelp cmd(or -ch)
+       displays command help 
+   --resume (or -r)
+       send the following commands to an already-running bootloader
+   --quiet (or -q)
+       surpress excessive console output
+   --wait (or -w)
+       waits for a device connection (currently a USB cable)
+   --create
+       full initialization of the target device using the config file
+   --download N filename
+       download partition filename to N
+   --setboot N
+       sets the boot partition to partition N
+   --format_partition N
+       formats contents of partition N
+   --read N filename
+       reads back partition N into filename
+   --getpartitiontable filename
+       reads back the partition table into filename
+   --getbit filename
+       reads back BIT into filename
+   --getbct
+       reads back the BCT from mass storage
+   --odm C Data
+        ODM custom 32bit command 'C' with associated 32bit data
+   --go
+       continues normal execution of the downloaded bootloader
+    options =
+   --configfile filename
+       indicates the configuration file used with the following commands:
+       --create, --format_all
+   --bct filename
+       indicates the file containing the BCT
+   --sbk 0x00000000 00000000 00000000 00000000
+       indicates the secure boot key for the target device
+   --bl filename
+       downloads and runs the bootloader specified by filename
+   --odmdata N
+      sets 32bit customer data into a field in the BCT, either hex or
+      decimal
+   --diskimgopt N
+       sets 32bit data required for disk image convertion tool
+   --format_all
+       formats all existing partitions on the target device using the config file,
+       including partitions and the bct
+   --setbootdevtype S
+       sets the boot device type fuse value for the device name.
+       allowed device name string mentioned below:
+           emmc, nand_x8, nand_x16, nor, spi
+   --setbootdevconfig N
+       sets the boot device config fuse value either hex or decimal
+   --verifypart N
+        verifies data for partition id = N specified. N=-1 
+        indicates all partitions
+        Intended to be used with --create command only.
+   --setbct
+       updates the chip specific settings of the BCT in mass storage to
+       the bct supplied,used with --create, should not be with --read,and
+       --format(delete)_all,format(delete)_partition,--download, and--read
+   --sync
+       issues force sync commad
+   --rawdeviceread S N filename
+       reads back N sectors starting from sector S into filename
+   --rawdevicewrite S N filename
+       writes back N sectors from filename to device starting from sector S 
+\end{bash}
+
+
+
+

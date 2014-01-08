@@ -1,0 +1,119 @@
+\chapter{Preparazione dei dispositivi Android}
+\minitoc\mtcskip
+
+\section{Premesse: riconoscimento del dispositivo Android all'interno dell'ambiente GNU/Linux}
+Per quanto riguarda il riconoscimento del dispositivo Android all'interno di un
+sistema operativo GNU/Linux, ed in particolare per il riconoscimento dello stesso
+da parte dell'SDK Android, è necessario eseguire il seguente script.
+\lstinputlisting[language={bash}]{srcs/tablet_installer.sh}
+In particolare, le operazioni di modifica di \texttt{\small fuse.conf} e l'aggiunta
+dell'utente all'interno del sistema, sono necessarie unicamente alla prima
+esecuzione dello stesso. Tramite questa operazione è già possibile interagire col 
+dispositivo tramite i tool di Android come descritto nella Sezione \vref{sec:intdevandroid}.
+
+In questo modo tuttavia non è presente l'applicazione \texttt{su} (o comunque essa 
+non è utilizzabile), né è presente l'applicazione apk di Superuser per gestire
+i permessi di superutente nelle applicazioni che si basano su Java.
+
+
+\section{Rooting del dispositivo}\label{sec:rootingdevice}
+Premessa:
+se si intende compilare una versione dell'Android Kernel è opportuno, 
+prima di effettuare il \textit{rooting} sul dispositivo, ottenere 
+ il file \texttt{\small /proc/config.gz} tramite \texttt{\small adb}.
+\bigskip
+
+Il rooting del dispositivo si rivela necessario qualora si voglia rendere possibile
+l'accesso ai privilegi di superutente ad un'applicazione: questo ad esempio è 
+necessario per quelle applicazioni native che devono poter accedere a servizi forniti
+dal sistema operativo che richiederebbero la descrizione dei permessi all'interno di un Manifest
+File, per i motivi già illustrati nella Sezione \vref{sec:rivsupuser}. 
+Questo è inoltre provato dal tentativo di esecuzione dell'applicazione
+\texttt{\small pjsua} all'interno di una shell dove non sono stati richiesti i 
+permessi di superutente; l'applicazione termina con l'errore che segue:
+\begin{bash}
+23:34:31.991    pjsua_aud.c  ....Opening sound device PCM@16000/1/20ms
+23:34:31.992   opensl_dev.c  .....Creating OpenSL stream
+23:34:31.996   opensl_dev.c  .....Recording stream type 4, SDK : 16
+23:34:31.999   opensl_dev.c  .....Cannot realize recorder : 9
+23:34:31.999   opensl_dev.c  .....Stopping stream
+23:34:31.999   opensl_dev.c  .....OpenSL stream stopped
+23:34:32.000   opensl_dev.c  .....OpenSL stream destroyed
+\end{bash}
+In particolare il numero d'errore 9 corrisponde al valore di SLResult \\
+\texttt{\small SL\_RESULT\_CONTENT\_UNSUPPORTED}.
+Tuttavia questo output è poco informativo se non si considera anche quello
+fornito dal LogCat durante l'esecuzione dell'applicazione in questione:
+\begin{bash}
+W/ServiceManager(  106): Permission failure: android.permission.RECORD_AUDIO from uid=10043 pid=2978
+E/AudioFlinger(  106): Request requires android.permission.RECORD_AUDIO
+E/AudioRecord( 2978): AudioFlinger could not create record track, status: -1
+E/libOpenSLES( 2978): android_audioRecorder_realize(0x2212d0) error creating AudioRecord object
+W/libOpenSLES( 2978): Leaving Object::Realize (SL_RESULT_CONTENT_UNSUPPORTED)
+\end{bash}
+Possiamo infatti notare che il Service Manager non rende fruibile all'applicazione
+l'\texttt{\small AndroidRecord}, in quanto l'applicazione eseguita in modalità utente
+non detiene il permesso \texttt{\small android.permission.RECORD\_AUDIO} richiesto,
+che tuttavia risulta essere inglobato nei permessi del superutente, in quanto
+viene permessa l'esecuzione di tale operazione.
+ 
+Posso inoltre notare come Android consenta che la connessione ad Internet venga
+effettuata tramite le funzioni primitive della \textit{libc}, anche se si ritiene che
+Google abbia implementato un meccanismo di Networking ``paranoico'' (\parencite[vedi][37]{libro:embedded})
+che consenta solamente a certi processi, con peculiari \textit{capability}, di
+accedere a tali servizi. Ricordo inoltre che, all'interno di Applicazioni Java
+o di Applicazioni Native con JNI, è necessario specificare all'interno del manifest
+l'intenzione di accedere ai servizi di rete.
+
+Fornisco quindi di seguito alcune procedure di Rooting che sono state effettuate
+allo scopo di valutare il porting di Pjproject.
+
+\subsection{Rooting dell'emulatore}\label{subsec:rootingemu}
+Per poter modificare la cartella \texttt{\small /system} che è montata in modalità di sola lettura, è necessario effettuarne il remounting nel modo seguente:
+\begin{bash}
+  ... mount -o rw,remount -t yaffs2 /dev/block/mtdblock0 /system
+\end{bash}
+Per installare l'applicazione, è sufficiente copiare il binario \texttt{\small su} (del quale sono presenti differenti versioni in rete) all'interno di \texttt{\small /system/xbin} tramite \texttt{\small adb}, ed installare l'apk \textit{Superuser} tramite il comando \texttt{\small install} di \texttt{\small adb}.
+
+Alla fine della procedura possiamo rimontare \texttt{\small /system} come \textit{read-only} (ro); tuttavia possiamo mantenere abilitata la scrittura per poter effettuare delle ulteriori modifiche fino al prossimo riavvio, quando tale cartella verrà rimontata con soli permessi di lettura.
+
+\subsection{Rooting di Samsung Galaxy Nexus}\label{subsec:rootingn}
+ Al contrario dell'emultatore, i dispositivi Android hanno in genere il bootloader bloccato (\textit{locked}), che è sempre necessario sbloccare anche se, in questo modo, si infrange la garanzia. Allo scopo di effettuare l'\textit{unlocking}, è necessario entrare con il dispositivo nella modalità \textit{bootloader}. Per accedere in questa modalità o si invoca il comando \texttt{\small adb reboot bootloader} o, nel caso particolare del dispositivo Galaxy Nexus, spegnere il dispositivo, prima premere i tasti di aumento e diminuzione del volume contemporaneamente, e poi tenere premuto anche il tasto di accensione, finché non sarà visibile il bootloader. Il comando per l'\textit{unlocking} è il seguente:
+\begin{bash} 
+fastboot oem unlock
+\end{bash}
+
+ È sempre possibile ripristinare il bloccaggio (locking) in un secondo momento tramite il comando:
+\begin{bash}
+fastboot oem unlock
+\end{bash}
+
+ Bisogna ricordare che, con il primo comando di cui sopra, si compromettono i dati contenuti all'intero di \texttt{\small /sdcard}, le configurazioni dell'utente ed i programmi installati. Per ovviare a questo problema, è sempre possibile eseguire il seguente comando, allo scopo di effettuare un backup del dispositivo:
+\begin{bash}
+adb backup [-f <file>] [-apk|-noapk] [-shared|-noshared] [-all] [-system|-nosystem] [<packages...>]
+\end{bash}
+
+ È sempre possibile ripristinare tale backup in qualunque momento tramite l'altro comando che segue:
+\begin{bash} 
+adb restore <file>
+\end{bash}
+
+ Con questo comando si mantengono tutte le eventuali procedure di rooting apportate, ma non si recupereranno le modifiche effettuate sul file system del dispositivo, come la creazione di nuove cartelle o l'aggiunta di nuovi binari.
+ A questo punto sarà possibile caricare un'immagine per poter effettuare in ogni momento la recovery; adoperando ad esempio Recovery Clockwork Touch, si può invocare il comando : 
+\begin{bash}
+fastboot flash recovery recovery-clockwork-touch-x.y.z.t-maguro.img
+\end{bash}
+ dove x.y.z.t è la versione a disposizione dell'immagine in questione. È possibile comunque ottenere le immagini accedendo all'indirizzo {\small \url{http://www.clockworkmod.com/rommanager}}. 
+ 
+ In seguito è sufficiente fornire il file zippato per il rooting, che dovrà essere inserito all'interno della \texttt{\small /sdcard}, in modo da poterlo fornire alla \texttt{recovery-utility}. Sarà sempre possibile inoltre recuperare l'immagine originaria della recovery tramite l'indirizzo:
+\begin{center}
+{\small \url{https://dl.google.com/dl/android/aosp/yakju-jro03c-factory-3174c1e5.tgz}}
+\end{center}
+ È quindi sempre possibile ripristinare il dispositivo allo ``stato di fabbrica'' tramite il pacchetto fornito come sopra.
+ 
+\subsection{Rooting di Olivetti Olipad}\label{subsec:rootingoli}
+La procedura di Rooting dell'Olivetti Olipad è non standard, in quanto consente immediatamente di vedere quali sono le modifiche da effettuare al Ramdisk per consentire la modifica del filesystem \texttt{\small /system/xbin}; altro fattore non standard è l'utilizzo del tool \texttt{nvflash}, il quale è utilizzato per effettuare il flashing di dispositivi con processore Tegra 2.
+
+In quanto questa procedura non è di particolare interesse ai fini dell'illustrazione dei tool messi a disposizione da Android, il codice sorgente dello script è messo a disposizione nella Sezione \vref{sec:rootolipad_src}.
+
+

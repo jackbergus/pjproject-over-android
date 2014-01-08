@@ -1,0 +1,150 @@
+
+\subsection{Differenze architetturali: OpenSLES}\label{subsec:mischeWilhelm}
+\it{In questo punto cercherò di difendere l'ipotesi secondo la quale le librerie
+interne del sistema operativo Android veicolino indirettamente l'effettuazione
+dei controlli sui permessi di sistema.} Quest'occasione viene fornita 
+dall'errore riportato dal LogCat durante l'esecuzione di \tt{pjsua} senza particolari
+privilegi utente, ed evidenziato nella Sezione \vref{sec:rootingdevice}. 
+In questa sede non descriverò
+la libreria OpenSLES, per la quale faccio riferimento alla Sottosezione 
+\vref{subsubsec:OnlyAudioOpenSles},
+ma metterò in luce il collegamento esistente tra librerie  a supporto
+del codice nativo e funzioni di monitoraggio del sistema.
+
+In questa sede mi riferirò ad OpenSLES come ad Wilhelm (\tt{\small \AOSP/frameworks/wilhelm}),
+in quanto in questo punto si effettua l'implementazione di OpenSLES e si forniscono
+gli \it{include} all'interno del percorso \tt{\small \AOSP/frameworks/wilhelm/include/SLES}.
+\medskip
+
+
+
+
+Ripartirò ora con la trattazione facendo riferimento all'analisi degli errori
+forniti dal LogCat, e che in particolare fanno riferimento allo strato delle
+librerie native. Si può vedere come l'output:
+%center
+\it{ android\_audioRecorder\_realize(...) error creating AudioRecord object}
+.%
+venga fornito all'interno della funzione \tt{\small wilhelm} \tt{\small android\_audioRecorder\_realize}, 
+definito nel file \tt{\small AudioRecorder\_to\_android.cpp}: si può 
+immediatamente notare l'invocazione del costruttore \tt{\small android::AudioRecord()},
+il quale in realtà appartiene ad una classe di un'altra libreria, detta \it{ libmedia},
+e definito all'interno del file:
+%center
+\tt{\small \AOSP/frameworks/av/media/libmedia/AudioRecord.cpp}
+.%
+L'invocazione di tale costruttore implica l'invocazione del metodo \tt{set},
+causando l'invocazione del metodo \tt{\small openRecord\_l} che è il responsabile
+dell'output di errore:
+%center
+\it{ AudioFlinger could not create record track, status: ...}
+.%
+In particolare questo è il risultato della seguente invocazione:
+%cpp
+sp<IAudioRecord> record = audioFlinger->openRecord(getpid(), input, sampleRate, format,channelMask,frameCount,IAudioFlinger::TRACK_DEFAULT,&mSessionId,&status);
+.%
+dove  ci si preoccupa di controllare preventivamente i permessi tramite
+l'invocazione del metodo \tt{\small recordingAllowed()} di \tt{\small 
+ServiceUtilities.cpp}, il quale a sua volta effettua l'invocazione di 
+\tt{\small checkCallingPermission(''android.permission.\\RECORD\_AUDIO'')}.
+Il tipo di dato che è definito come \tt{\small sp} è in particolare l'implementazione
+degli \it{Strong Pointer} che, assieme ai \it{Weak Pointers} definiti nel file:
+%center
+\tt{\small \AOSP/frameworks/native/libs/utils/RefBase.cpp}
+.%
+implementano tramite ``smart pointers'' il \it{Reference Counting}
+all'interno del codice C++\footnote{\label{foot:smart}Per non soffermarmi eccessivamente su 
+questo aspetto secondario, faccio riferimento
+al sito \url{http://www.icepack-linux.com/android-smart-pointer/}}.
+È comunque a questo livello, ovvero di libreria \it{libnbaio}, presente tra altre
+all'interno del percorso:
+%center
+\tt{\small \AOSP/frameworks/av/services/audioflinger/}
+.%
+che noto le prime
+chiamate a funzioni della libreria \it{libbinder}, i cui sorgenti sono situati
+all'interno del percorso:
+%center
+\tt{\small \AOSP/frameworks/native/libs/binder/}
+.%
+Riporto l'inclusione dello header di \tt{\small ServiceUtilities.cpp}:
+%cpp
+#include <binder/IPCThreadState.h>
+#include <binder/IServiceManager.h>
+#include <binder/PermissionCache.h>
+.%
+%figure:=thp
+\centering
+\subfloat[][\it{Descrizione finale della gerarchia Android. Sono messi in luce i meccanismi di registrazione del servizio e di IPC}.]{\label{subfig:myselfig}\includegraphics[scale=0.6]{img/modelio/conclus_servandroid.png}}\\
+\subfloat[][\hbox{\it{Visione High-Level dell'architettura Android. \parencite{tesi:binder}}.}]{\label{subfig:genbinder}\includegraphics[scale=0.25]{img/teutoinc_level.png}}\\
+\caption{Visione dell'interazione tra oggetti interagenti nel corso dell'IPC.}
+\label{fig:binderconclusion}
+.%
+Sebbene il metodo \tt{checkCallingPermission} sia definito sia nella classe
+\tt{\small IServiceManager}, sia in \tt{PermissionCache}, solamente nella prima si
+ha l'inclusione di tale metodo all'interno del \it{namespace} \tt{android}, che
+quindi riporto qui sotto:
+%cpp
+bool checkCallingPermission(const String16& permission, int32_t* outPid, int32_t* outUid)
+{
+    IPCThreadState* ipcState = IPCThreadState::self();
+    pid_t pid = ipcState->getCallingPid();
+    uid_t uid = ipcState->getCallingUid();
+    if (outPid) *outPid = pid;
+    if (outUid) *outUid = uid;
+    return checkPermission(permission, pid, uid);
+}
+.%
+
+Proseguendo l'analisi dell'output fornito, ottengo che il seguente messaggio:
+%center
+\it{Permission failure: android.permission.RECORD\_AUDIO from uid=10043 pid=2978}
+.%
+è prodotto ancora una volta dalla classe C++ \tt{IServiceManager}, della quale
+metto in evidenza il codice:
+%cpp
+// Is this a permission failure, or did the controller go away?
+if (pc->asBinder()->isBinderAlive()) {
+   ALOGW("Permission failure: \%s from uid=\%d pid=\%d", String8(permission).string(), uid, pid);
+   return false;
+}
+.%
+Ciò mostra che effettivamente il Binder è esistente, ma che la restituzione
+della chiamata a funzione è \tt{\small false}.
+
+Ritornando ora a seguire il \it{fil rouge}, otteniamo che 
+la chiamata al \tt{\small checkPermission} remoto viene garantita dalla chiamata all'omonima
+funzione definita all'interno di\\ \tt{\small IPermissionController}, che effettua
+l'inserimento dei dati all'interno del \tt{Parcel} e richia il metodo:
+%cpp
+remote()->transact(CHECK_PERMISSION_TRANSACTION, data, &reply);
+.%
+In questo caso \tt{\small remote()} non è nient'altro che l'oggetto \tt{\small mRemote}
+\tt{\small BpBinder} e fornito dal Binder per effettuare la
+comunicazione tramite l'omonimo driver, e quindi si riuscirà ad interagire con il
+service registrato, che in particolare risponde al descrittore \tt{\small android.os.IPermissionController}.
+Come conclusione posso fornire 
+il diagramma degli oggetti proposto in Figura
+\vref{fig:binderlowlevel}, palesando così l'effettuazione delle
+\it{upsyscall}.
+
+%java
+static class PermissionController extends IPermissionController.Stub {
+        ActivityManagerService mActivityManagerService;
+        PermissionController(ActivityManagerService activityManagerService) {
+            mActivityManagerService = activityManagerService;
+        }
+
+        public boolean checkPermission(String permission, int pid, int uid) {
+            return mActivityManagerService.checkPermission(permission, pid,
+                    uid) == PackageManager.PERMISSION_GRANTED;
+        }
+}
+.%
+
+Posso quindi ribadire i concetti fin'ora espressi tramite l'ausilio dell'immagine
+\subref{subfig:myselfig} \vref{fig:binderconclusion}, che in pratica dettaglia
+quello che le fonti avevano già espresso con la Figura \subref{subfig:genbinder}
+\vref{fig:binderconclusion}.
+
+

@@ -1,0 +1,3 @@
+[![Licenza Creative Commons](http://i.creativecommons.org/l/by-sa/4.0/88x31.png)](http://creativecommons.org/licenses/by-sa/4.0/) **Pjproject su Android: uno scontro su più livelli** di [Giacomo Bergami](http://jackbergus.alwaysdata.net/) è distribuito con Licenza [http://creativecommons.org/licenses/by-sa/4.0/](Creative Commons Attribuzione - Condividi allo stesso modo 4.0 Internazionale) Based on a work at http://amslaurea.unibo.it/4441/. Permessi ulteriori rispetto alle finalità della presente licenza possono essere disponibili presso https://github.com/jackbergus/pjproject-over-android
+
+For a better compile, use https://github.com/jackbergus/jbtex2, and remove the .git folder (or add inside it a skip_this file)

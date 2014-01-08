@@ -1,0 +1,22 @@
+export ANDROID_NDK=`pwd`/../android-ndk-r8b
+export API_LEVEL=14
+export PATH=$PATH:$ANDROID_NDK
+
+#cp -av /usr/share/misc/config.guess ./
+#cp -av /usr/share/misc/config.sub  ./
+
+autoconf aconfigure.ac > aconfigure
+chmod +x aconfigure
+chmod +x configure
+
+make clean
+make realclean
+make aclean
+
+echo "#define PJ_CONFIG_ANDROID 1
+#include <pj/config_site_sample.h>" > pjlib/include/pj/config_site.h
+
+./configure-android --enable-ext-sound --disable-speex-codec \
+		--disable-speex-aec --disable-l16-codec --disable-g722-codec $* 
+
+make dep

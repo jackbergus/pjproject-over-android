@@ -1,0 +1,217 @@
+\chapter{Tentativi di porting e considerazioni effettuate}
+\minitoc\mtcskip
+
+Esporrò di seguito per punti le procedure effettuate allo scopo di realizzare il
+porting dell'applicazione, ed a quali conclusioni sia giunto ogni volta. 
+Elenco di seguito ulteriori considerazioni effettuate, non descritte all'interno
+di questo capitolo ma presenti all'interno della Tesi:
+\begin{itemize}
+\diam Interazione tra Emulatore e Macchina Ospite: v. Sottosezione \vref{subsec:commtwoemu}.
+\diam Tentativi di configurazione per la crosscompilazione: v. Sezione \vref{sec:tentconfcross}.
+\diam Analisi del sorgente e modifica nel supporto dei file WAVE: v. Sezione \vref{sec:consWAVE}.
+\diam Modifica nel sorgente dell'AOSP Source \vref{sec:modifaosp}.
+\end{itemize}
+
+\section{Considerazioni sulla crosscompilazione}\label{sec:conscrossocmp}
+Una breve descrizione dei tentativi effettuati per la crosscompilazione
+è fornita nell'Appendice alla Sezione \vref{sec:tentconfcross}, tramite il
+particolareggiamento sul cambiamento delle configurazioni.
+
+Proseguo ora nella descrizione dei tentativi di porting:
+\begin{enumerate}
+\item Come prima cosa, ho provato a compilare \texttt{\small pjsua} specificando unicamente
+       in quale percorso trovare il binario di cross-compilazione, effettuando
+       l'export dell'unica variabile CC. 
+       
+       Proprio a questo credo sia dovuto il primo errore di compilazione: di
+       fatti lo stack del \texttt{pc} deducibile dal \texttt{logcat} forniva come
+       ultimi binari \texttt{/system/bin/linker} e \texttt{/system/lib/libc.so}.
+       
+       Questo mostrava che la procedura di linking dinamica funzionava a dovere,
+       che effettivamente il linker aveva utilizzato la libreria richiesta,
+       ma l'esecuzione di \texttt{\_\_set\_errno} era errata. Con il senno di poi,
+       e conoscendo l'istruzione \texttt{nm} per andare ad indagare i simboli
+       contenuti all'interno dei file binari, ho visto che \texttt{\_\_set\_syscall\_errno}
+       era posizionata proprio all'inizio del file, e con ogni probabilità è
+       stata scelta come funzione \textit{entry point}. Non era stato quindi compilato
+       correttamente per l'architettura ARM.
+\item In seguito ho riscontrato lo stesso errore anche compilando la libreria 
+       \textit{pjlib} nel branch di Android, in quanto (con ogni probabilità) credevo
+       che il problema consistesse nel sorgente, e non nel metodo da me
+       adottato per effettuare cross compiling.
+\item Poi ho trovato i flag di compilazione per architettura ARMv5, ed
+       ho provato ad applicare quelli allo scopo di effettuare cross compilation.
+       Ho provveduto quindi a modificare direttamente  i flag di linking e compilazione
+       in \texttt{\small configure-android},
+       senza ancora utilizzare il file .mak
+       
+       Con ogni probabilità anche l'esecuzione della syscall con i seguenti parametri:
+       \begin{center}
+       \texttt{\small sigaction(48472, {0xb00144c4, [], SA\_RESTART}, {0xb00144c4, [], SA\_RESTART}, 0) = -1 EINVAL}
+       \end{center}
+       (che portava ad un SIGFAULT in quanto non era definito da nessuna parte un
+       segnale con codice 48472) indicava un errato modo di effettuare cross-compilazione,
+       o per i flag che indicano le caratteristiche dell'EABI del processore, o
+       ancora per una non corretta endianess riconosciuta in fase di configurazione.
+\item Osservando che queste syscall non vengono eseguite correttamente,
+       suppongo che questo sia dovuto ad una carenza di permessi dell'utente
+       che esegue le istruzioni. 
+       
+       Come ho avuto modo di dimostrare precedentemente, ritengo col senno di
+       poi che questo fosse imputabile ad una non corretta
+       cross-compilazione, anche se il problema dei permessi sarebbe  
+       comunque prima o poi emerso.
+       
+       Ho osservato, leggendo la documentazione di Google, che 
+       ogni applicazione viene eseguita all'interno di una ``sandbox'', per 
+       uscire parzialmente dalla quale è necessario esibire al sistema la 
+       richiesta di speciali permessi di esecuzione. Avendo prima d'allora
+       effettuato programmazione Android unicamente in Java, ho fornito tali
+       permessi unicamente tramite un file, detto ``Manifest'', all'interno
+       del quale esplicitavo la necessità di connettermi alla rete Internet, piuttosto
+       di scrivere all'interno del filesystem. Da quanto mi risultava inoltre da
+       procedure di rooting, con i permessi di superutente si sarebbe potuto
+       uscire dalla sandbox. Questo è peraltro confermato da informazioni che
+       ho acquisito successivamente permesso lato \textit{service} Java.
+\item In quanto ritengo ``unsafe'' in termini di garanzia del dispositivo reale
+       effettuare rooting sul mio primo dispositivo (ovvero l'Olivetti Olitab, 
+       che tra l'altro è scarsamente supportato
+       in ambito cracking rispetto ad altri più mainstream), effettuo una prima
+       procedura di rooting sull'emulatore; questa è già stata discussa nella
+       Sottosezione \vref{subsec:rootingemu}. 
+       
+       A riprova del fatto che la
+       causa del mancato funzionamento del binario non era da addebitare al mancato rooting del dispositivo, 
+       neanche in questo modo nell'emulatore
+       si risolve l'\texttt{EINVAL} di cui sopra. A questo punto, imputando 
+       il problema ad una limitazione effettiva di tale dispositivo (cosa
+       plausibile visti i miei trascorsi con la programmazione Java), mi decido
+       ad effettuare la procedura di rooting anche sul mio dispositivo personale.
+       
+       Ad ulteriore riprova di ciò che sto più volte ribadendo,
+       anche utilizzando il tablet l'applicazione non sembra partire. Inoltre, non 
+       essendo implementato in questo dispositivo il binario \texttt{\small strace}\footnote{
+       Provai ad utilizzare un binario trovato in Rete: tuttavia ancora adesso,
+       su qualsiasi binario tracciato (compreso l'\texttt{ls} effettivamente 
+       disponibile all'interno del dispositivo personale in questione). effettua
+       unicamente il tracciamento della syscall \texttt{exec*}.}, ciò rende 
+       difficoltosa l'interpretazione dei motivi dell'errore.
+       
+       Effettuo quindi la comparazione tra gli output del LogCat (più verboso ma
+       meno informativo della \texttt{\small strace}) dell'emulatore e quello del dispositivo 
+       personale in questione. Noto solo così per la prima volta la discrepanza
+       tra i due output. Inizio a pensare per la prima volta che l'errore di esecuzione
+       sia dovuto ad una disparità tra la costruzione architetturale ed i flag
+       di compilazione.
+\item Riguardando in una fase successiva la definizione di \texttt{\small SIGILL}, noto che
+       questo segnale è effettivamente lanciato al processo che tenta di eseguire
+       un'istruzione malformata, sconosciuta o che richiede particolari privilegi.
+       
+       Esclusa  l'ipotesi della necessità di acquisire particolari permessi,
+       in quanto abbiamo supposto sin dall'inizio che la procedura di rooting
+       garantisca l'accesso al superuser e quindi potenzialmente a tutte le istruzioni
+       fornite dal kernel (o almeno alla maggior parte), è evidente che l'istruzione
+       debba essere malformata, e conseguentemente sconosciuta, proprio a causa
+       di una differente tipologia tra hardware reale e hardware di compilazione.
+       L'errore non era localizzabile nella libreria in sé, in quanto caricata 
+       dinamicamente, ma nell'istruzione richiesta dal binario da me compilato.
+       
+       A questo punto arrivo a concludere che il problema possa essere insito 
+       nei flag di crosscompilazione: da ciò segue che le direttive al compilatore
+       fornite dal branch di Android per effettuare la crosscompilazione, al
+       quale mi appoggiavo, non erano sufficienti al fine di effettuare una corretta
+       crosscompilazione. Di fatti, dispositivi differenti dovrebbero necessitare
+       di differenti configurazioni in fase di compilazione.
+\item In riferimento al tracciamento dei processi figli, che sembrano non essere
+	tracciabili da strace in Android, ritengo opportuno spostare la fase
+	di testing su applicazioni che non prevedano inizializzazioni o creazioni
+	di thread come \textit{\small pjsua}, almeno per una fase iniziale, visto l'esiguo
+	numero di informazioni che sono ottenibili dal LogCat (Non viene di
+	fatti indicato quale syscall è stata chiamata, ma solo l'avanzare del \textit{\small pc}
+	nel corso dell'esecuzione, di per se non molto significativo, se non a patto
+	di ricostruirlo analizzando il binario generato). Proseguo quindi il testing
+	su \texttt{\small test-pjsip}.
+	
+	Documentandomi meglio, tendo poi 
+	ad escludere che Android non permetta la creazione
+	di processi figli, in quanto la libreria \textit{pthread} è 
+	nativamente supportata all'interno di \textit{Bionic}.
+\item Riporto le osservazioni che avevo effettuato sull'esecuzione di \texttt{\small test-pjsip}:
+	l'esecuzione dell'istruzione \texttt{\small usage} al posto di \texttt{\small main}
+	era proprio da imputare alla mancanza dell'entry-point \texttt{\small\_start}.
+	Non conscio del fatto che questo fosse già implementato all'interno di
+	\texttt{\small crtbegin}, in quanto convinto che questo dovesse comunque essere 
+	implementato all'interno della \texttt{\small libc}, decido di utilizzare l'implementazione
+	Assembly di tale entry point, documentandomi su quale fosse la procedura
+	di inizializzazione di libc, e provando ad effettuare il disassembly
+	di alcuni binari di prova per Android. Trovo poi conferma di questa
+	procedura documentandomi in rete, ed appoggiandomi a quel risultato 
+	maggiormente raffinato rispetto a quello prodotto da me inizialmente.
+	
+	Solo in seguito alla redazione di una prima bozza di Tesi ed alla
+	visione dei sorgenti di \textit{Bionic}, scopro che tale implementazione era contenuta all'intero
+	di \texttt{crtbegin}, unicamente tramite la somiglianza tra il sorgente da
+	me prodotto, e quello fornito da Google. In seguito questa supposizione
+	trae conferma dall'utilizzo di \texttt{nm} sull'oggetto binario in questione.
+
+
+
+
+
+\item Avevo precedentemente imputato l'ulteriore interruzione dell'esecuzione
+	di \texttt{\small pjsua} all'errata esecuzione della syscall uname: tuttavia, a riprova
+	che questa è effettivamente disponibile, il file da me scritto in C e
+	crosscompilato allo scopo di ottenere la versione correntemente 
+	utilizzata nel mio dispositivo, ha ribadito (come tra l'altro evidenziato
+	da un'analisi più accorta dell'output della strace) come questa sia
+	effettivamente accessibile.
+	
+	Come evidenziato, il problema dovrebbe essere costituito dall'accesso
+	all'indirizzo NULL di memoria (Compare di fatti da Logcat un ``Segmentation Fault 
+	at 0x0''). Ciò tuttavia mi lascia alquanto perplesso, in quanto pjsua su adm64
+	non ha mai causato quel genere di problemi, ma veniva eseguito correttamente.
+	Da qui nasce appunto l'esigenza di proseguire il testing su di un
+	sorgente meno ``intricato'' dal punto di vista del debugging.
+\item Come tra l'altro appena ribadito, il mio dubbio
+	risiede nel fatto che, una volta liberato dai 
+	vari permessi, l'applicazione sembra ancora non proseguire correttamente
+	nell'esecuzione. In particolare, dopo l'ultima stampa a video, 
+	noto un palese delay tra questa e la interruzione dell'operazione.
+	
+\item Mi riservo un'ultima considerazione di mero carattere speculativo in
+	merito all'architettura Android, e non correlata con il sorgente specifico
+	se non per lo scopo che mi prefiggo, ovvero quello di effettuare il porting
+	dell'applicazione per Android, circa la lettura di ``Embedded Android''
+	di Karim Yaghmour.
+	
+	L'autore tuttavia sostiene che le applicazioni ``native'' non dovrebbero
+	essere soggette a restrizioni, anche se poi asserisce che ``tutto ciò che
+	avviene di interessante è gestito da 50 servizi (tra cui cito \texttt{\small
+	netstat} e \texttt{\small permission}) di sistema, dove l'interazione è gestita da un Binder
+	(\texttt{\small /dev/binder}).
+	
+	Inizialmente ritengo che siano necessarie tecniche di ``hookup''\footnote{I meccanismi più diffusi tramite i quali 
+       si effettua lo hacking del dispositivo sono il ``Privilege Escalation
+       Attack'' e il cosiddetto ``hooking'', anche se la procedura di rooting
+       varia in base alla versione di Android ed alle caratteristiche del 
+       dispositivo.} per 
+	evitare che le \textit{system call} vengano intercettate dal sistema operativo:
+	tuttavia a questo punto non ero ancora consapevole dei meccanismi di IPC
+	che collegano tramite \textit{upsyscall} i binari ai servizi di sistema, in
+	quanto confinavo il Binder ad un ambito strettamente legato alla DVM ed
+	a Java.
+\item Seguono i tentativi di configurazione degli script di compilazione 
+	descritti nella Sezione \vref{sec:tentconfcross}.
+\item Dopo un'attenta analisi dei warning in fase di compilazione, mi accorgo
+	di come rimangano ulteriori messaggi segnalanti la mancata definizione di
+	\texttt{\small \_start}. Ciò era  dovuto all'indicazione del binario 
+	\texttt{\small crt0.o} unicamente all'interno della variabile \texttt{\small PJ\_LDLIBS},
+	che credevo  contenuta all'interno di tutte le variabili per il 
+	linking.
+	In seguito alle configurazioni definitive già mostrate
+	nel Capitolo \vref{cha:pjproject}, ottengo per la prima volta l'esecuzione
+	completa di \texttt{\small pjsua}.
+\end{enumerate}
+
+
+

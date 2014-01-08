@@ -1,0 +1,211 @@
+\section{Considerazioni sulla riproduzione dei file WAVE}\label{sec:consWAVE}
+%enumerate
+\item Come descritto nella Sottosezione \vref{subsec:impossibemuandroid}, era
+	impossibile da emulatore controllare l'effettiva riproduzione dei files,
+	in quanto questo non supporta l'emulazione delle periferiche audio.
+	Dopo aver notato, prima sull'Olipad e poi anche sul Galaxy Nexus, che
+	l'esecuzione contemporanea di due istanze di \tt{\small pjsua} 
+	provoca dei problemi nell'esecuzione del programma, in questa prima
+	fase mi concentro sul testing dei due dispositivi, utilizzandone uno
+	per la riproduzione dell'audio, e l'altro per la trasmissione dello stesso
+	all'interno del canale di comunicazione. 
+	
+	Questi due dispositivi potranno interagire grazie all'utilizzo di un 
+	\it{router} domestico, che fornirà loro gli indirizzi IP per poter 
+	comunicare all'interno della rete locale.
+	
+	Per l'analisi del problema relativo all'esecuzione contemporanea di 
+	due istanza di \tt{\small pjsua}, si veda la Sezione \vref{sec:modifaosp}.
+	
+\item Prima di effettuare l'analisi approfondita dell'errore, provo ad attivare
+	o disattivare alcuni codec in fase di compilazione. Nel caso specifico,
+	come primo tentativo aggiungo i seguenti:
+	%bash
+--enable-ext-sound --disable-speex-codec --disable-speex-aec 
+	.%
+	Effettuo questa scelta in quanto l'applicazione mostra, con la configurazione
+	di default, di utilizzare il codec \tt{\small speex}:
+	%bash
+>15:24:37.407  pjsua_media.c  ......Audio updated, stream #0: speex (sendrecv)
+	.%
+	Una volta ricompilato il sorgente, provo ad eseguire un'istanza
+	di \tt{\small pjsua} come registratore sul Tablet Olipad, mentre 
+	scelgo di far riprodurre la traccia audio all'interno del Galaxy Nexus.
+	In questo caso riscontro quindi un problema con la deallocazione del
+	codec GSM, ed in particolare l'applicazione termina lato riproduttore
+	con un Segmentation Fault. In particolare il LogCat palesa l'errore
+	all'interno della funzione  \tt{\small gsm\_dealloc\_codec}.
+	
+	In particolare noto che, dopo una prima esecuzione del programma con
+	errore, facendolo ripartire in un secondo momento sulla stessa porta,
+	si riscontra un errore all'atto del \it{binding} della porta, come
+	mostrato dallo stesso output dell'applicazione:
+	%bash
+22:57:24.663   pjsua_core.c  bind() error: Address already in use [status=120098]
+	.%
+	
+	Per evitare l'errore nella gestione di \tt{\small gsm\_dealloc\_codec},
+	provo a disabilitare anche quella libreria in fase di configurazione con 
+	\tt{\small --disable-gsm-codec}. Provando quindi ad eseguire nuovamente
+	il binario sui due dispositivi, come già illustrato sopra: ottengo ora
+	ancora una volta nel dispositivo al quale è preposta la registrazione
+	l'errore causato dall'asserzione già osservato, ovvero:
+        %bash 
+assertion "cport->rx_buf_count <= cport->rx_buf_cap" failed: file "../src/pjmedia/conference.c", line 1498, function "read_port"
+.%
+
+	Ciò evidenzia come il problema sia indipendente dal codec utilizzato,
+	in quanto è comune sia alla prima configurazione e sia all'ultima.
+	
+\item Proseguendo ora nell'analisi dell'errore, effettuo i seguenti controlli
+	nel codice sorgente:
+	%itemize
+	\item Controllo che effettivamente si ottengano le informazioni corrette
+		dal file: questo è verificato dal fatto che si 
+		ottengono le informazioni dallo header del file WAVE.
+	\item Controllo se esista  un formato audio riproducibile
+		e che non causi errori. Mentre utilizzando il file
+		\url{http://www.nch.com.au/acm/11k16bitpcm.wav} si continua
+		a verificare il problema di asserzione, così come tutti gli altri
+		files ottenibili dal sito, non riscontro alcun problema con 
+		il file d'esempio:
+		%center
+		\tt{\small \PJA/tests/pjsua/wavs/input.8.wav}
+		.%	
+		Adduco a motivazione il fatto che, il file correntemente aperto,
+		abbia le stesse caratteristiche del bridge di comunicazione, e 
+		che per questo si ottenga il bypass del controllo di asserzione
+		del controllo di cui sopra, in quanto in quel caso i dati vengono
+		scritti direttamente all'interno della porta del bridge.
+	.%
+\item Per verificare questa mia ultima supposizione, aggiungo delle stampe di 
+	controllo all'interno della funzione \tt{\small read\_port}: da queste
+	scopro che anche nel caso del file ottenibili dai test del sorgente si 
+	entra nella gestione dei files con configurazione differente dal bridge
+	di comunicazione. 
+	
+	Posso inoltre controllare come, in questo caso, avvenga effettivamente
+	la conversione stereo/mono o mono/stereo ed il resampling audio in base
+	al differente sample rate, copiando poi le informazioni all'interno
+	del buffer RX per l'uscita delle informazioni verso il bridge di 
+	comunicazione. In particolare l'output dell'esecuzione di \tt{\small pjsua} 
+	file d'esempio corrente è il seguente:
+%bash
+21:21:49.299   conference.c  bufcount = 160, bufcap = 160, tmpsize=320, spf=160
+21:21:49.308   conference.c  WARNING: EXCEEDING. bufcount = 0, bufcap = 160, tmpsize=320, spf=160
+21:21:49.308   conference.c  bufcount = 160, bufcap = 160, tmpsize=320, spf=160
+.%
+	Mentre l'esecuzione di un file con caratteristiche audio differenti è il 
+	seguente:
+%bash
+21:19:09.101   conference.c !WARNING: EXCEEDING. bufcount = 0, bufcap = 429, tmpsize=438, spf=219
+21:19:09.102   conference.c  bufcount = 219, bufcap = 429, tmpsize=438, spf=219
+21:19:09.102   conference.c  WARNING: EXCEEDING. bufcount = 219, bufcap = 429, tmpsize=438, spf=219
+21:19:09.102   conference.c  bufcount = 438, bufcap = 429, tmpsize=438, spf=219
+assertion "cport->rx_buf_count <= cport->rx_buf_cap" failed: file "../src/pjmedia/conference.c", line 1513, function "read_port"
+.%	
+	dove $tmpsize$ indica la dimensione del $frame$ costituito da più $samples$,
+	ovvero:
+	%center
+	\tt{\small tmpsize = cport->samples\_per\_frame * cport->bytes\_per\_sample}
+	.%
+\item 	In particolare la spiegazione della scelta delle dimensioni del buffer
+	è confermata dal sorgente:
+	%center
+	\tt{\small \PJA/pjmedia/src/pjmedia/resample\_resample.c}
+	.%
+	si vuole tenere la prima parte del buffer allo scopo di memorizzare le
+	informazioni appena metabolizzate, in attesa che arrivino frame sufficienti
+	per effettuare l'operazione di resampling. Questo tuttavia presuppone
+	una gestione errata della stessa area di memoria da parte degli sviluppatori 
+	e, in particolare, si vede che l'asserzione è dovuta al fatto che la 
+	dimensione del buffer (\tt{\small bufcount}, ovvero \tt{\small cport->rx\_buf\_count})
+	è nettamente superiore alla dimensione della sua capacità massima
+	(\tt{\small bufcap}, ovvero \tt{\small cport->rx\_buf\_cap}), mentre
+	nel caso della gestione corretta si ottiene la seguente relazione:
+	\[2\cdot bufcount=2\cdot bufcap= tmpsize = 2\cdot spf\]
+	In quanto all'interno di \tt{\small read\_port} si utilizzano le configurazioni
+	già ottenute tramite \tt{\small create\_conf\_port}, è in questo 
+	punto che bisogna effettuare la vera modifica al codice.
+	
+	La prima significativa modifica sta nell'inserimento della variabile 
+	\tt{\small bytes\_per\_sample} all'interno della struttura dati 
+	\tt{\small struct conf\_port}, in quanto già dalla porta passata come
+	argomento è possibile ottenere l'informazione dei \tt{\small bits\_per\_sample}
+	tramite il metodo seguente:
+	%clang
+	pjmedia_audio_format_detail *afd = pjmedia_format_get_audio_format_detail(&port->info.fmt, 1);
+	.% 
+	Conseguentemente utilizzo il valore di default \tt{\small BYTES\_PER\_SAMPLE}
+	unicamente quando non si possa disporre di tali informazioni.
+\item 	Continuando ora con l'analisi dei valori ottenuti, voglio maggiorare
+	il valore di $bufcap$. Impongo quindi che debba valere il seguente 
+	sistema:
+	\[%cases
+	bufcount \leq bufcap\\
+	2\cdot bufcap = tmpsize = cpspf \cdot cpbps 
+	.%\]
+	Questo valore è ottenuto dalla macro \tt{\small PJMEDIA\_AFD\_SPF}
+	definita all'interno del file:
+	%center
+	\tt{\small \PJA/pjmedia/include/pjmedia/format.h}
+	.%
+	dalla quale si può ricavare la seguente formula:
+	\[cpspf = \mu ptime \cdot clock \cdot chan 10^{-6} = ptime \cdot clock \cdot chan 10^{-3}\]
+	come per altro confermato dall'altra definizione in \tt{\small wav\_player.c}
+	che non fa utilizzo della macro sopra citata. 
+	Per quanto concerne il valore utilizzato per $bufcap$, si considerino
+	le seguente formule ricavate dalla funzione \tt{\small create\_conf\_port}:
+\[pptime=\frac{cpspf}{cpcha}\frac{10^3}{cpclock}\qquad cptime = \frac{cspf}{ccha}\frac{10^3}{cclock}\]
+	dove il prefisso $p$ indica i valori propri della porta, mentre $c$
+	quelli della \it{conference port}. Dalla definizione di \tt{\small buff\_ptime}
+	originaria proposta di seguito:
+	%clang
+	if (port_ptime > conf_ptime) {
+	  buff_ptime = port_ptime;
+	  if (port_ptime \% conf_ptime)
+	     buff_ptime += conf_ptime;
+	} else {
+	  buff_ptime = conf_ptime;
+	  if (port_ptime \% conf_ptime)
+	     buff_ptime += conf_ptime;
+	}
+	.%
+	posso ottenere la seguente maggiorazione:
+	\[buff\_ptime < \max\Set{pptime,cptime}+\min\Set{pptime,cptime} = pptime + cptime\]
+	Svolgendo quindi la definizione di $bufcap$ data sempre dalla funzione in
+	questione:
+	\[%split
+	bufcap &= cpclock \cdot buff\_ptime \cdot 10^{-3}\\
+	       &= cpclock\cdot \left[10^3\left(\frac{cpspf}{cpcha\cdot cpclock} + \frac{cspf}{ccha\cdot cclock}  \right)\right]\cdot 10^{-3}\\
+	       &= \left(\frac{cpspf}{cpcha} + \frac{cspf\cdot cpclock}{ccha\cdot cclock} \right)
+	.%\]
+	
+	Considerando quindi l'ulteriore aggiustamento fornito dal codice:
+	%clang
+	if (conf_port->channel_count > conf->channel_count)
+	   conf_port->rx_buf_cap *= conf_port->channel_count;
+	else
+	   conf_port->rx_buf_cap *= conf->channel_count;
+	.%
+	e detto $\frac{1}{CRATE}=\frac{cpclock}{cclock} $ e supponendo che
+	2 sia il numero massimo dei canali otteniamo:
+	\[bufcap = %cases
+	  cpspf + cpspf\frac{1}{CRATE} & cpcha > ccha\\
+	  2(cpspf + cpspf\frac{1}{CRATE}) & cpcha \leq ccha
+	.%\]
+	Maggiorando quindi $cpspf cpspf\frac{1}{CRATE}$ con $2\cdot cpspf$,
+	posso ulteriormente maggiorare $bufcap$ con:
+	\[bufcap\leq 4\cdot cpspf\]
+	da cui la mia correzione in:
+	%clang
+conf_port->rx_buf_cap = 2 * conf_port->samples_per_frame * dbld;
+	.%
+	Lascio tuttavia anche la correzione dei canali originaria, allo scopo di
+	effettuare un'ulteriore maggiorazione nel caso in cui il numero di canali
+	sia maggiore di 2.
+\item Con i risultati ottenuti di cui sopra, che hanno consentito la modifica
+	 del file proposto in Sottosezione \vref{subsec:conferencec}, si è
+	 verificata la corretta riproduzione nel canale del file ottenuto dalla
+	 risorsa esterna.
+.%

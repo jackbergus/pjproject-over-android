@@ -1,0 +1,340 @@
+\documentclass[12pt,italian]{amsbook}
+\usepackage{framed}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[utf8]{inputenx}
+\usepackage[a4paper]{geometry}
+%\geometry{verbose,tmargin=4cm,bmargin=4cm,lmargin=1.25cm,rmargin=1.25cm,headheight=2cm,headsep=2cm,footskip=2cm}
+
+
+
+%% TOCs
+\setcounter{secnumdepth}{9}
+\setcounter{tocdepth}{9}
+\usepackage[tight,italian]{minitoc}
+\usepackage[italian]{varioref}
+\usepackage[unicode=true, pdfusetitle,
+ bookmarks=true,bookmarksnumbered=false,bookmarksopen=false,
+ breaklinks=true,pdfborder={0 0 1},backref=false,colorlinks=false]
+ {hyperref}
+
+
+%% GRAPHICS
+\usepackage[all]{xy}
+\usepackage{color}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{rotating}
+\usepackage{subfig}
+\usepackage{ulem}
+%% NOTA: makeidx già supportato da ams
+
+
+
+%% MATH
+\usepackage{paralist}
+\usepackage{braket}
+\usepackage{array}
+\usepackage{float}
+\usepackage{units}
+\usepackage{textcomp}
+\usepackage{mathpazo}
+\usepackage{amsfonts}
+\usepackage{amsmath,amsthm}
+\usepackage{amsthm}
+\usepackage{mathpazo}
+\usepackage{amssymb}
+\usepackage{mathdots}
+\usepackage{synttree}
+\usepackage{mathabx}
+
+%QUOTES
+\usepackage{quoting}
+\usepackage{epigraph}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% BIBLIOGRAPHY
+\usepackage[italian]{babel}
+\usepackage[babel]{csquotes}
+\usepackage[style=alphabetic,backref,hyperref,babel=hyphen]{biblatex}
+\bibliography{Biblio}
+
+\DeclareBibliographyCategory{Bibliografia}
+\DeclareBibliographyCategory{Sitografia}	
+
+\addtocategory{Bibliografia}{tesi:binder, tesi:nexus, libro:games, libro:embedded, man:gapil, art:middleware, libro:jni, libro:carli, art:apex}
+\addtocategory{Sitografia}{man:pjsip,slide:aporting,site:jollen,art:notdroid,site:marakAndroidInternals,site:marakRemixing, slide:androidhfeat, site:anonBinder, slide:zhIPC}
+
+\defbibheading{Bibliografia}{\section*{Bibliografia}}
+\defbibheading{Sitografia}{\section*{Sitografia}}
+
+\makeatletter
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LyX specific LaTeX commands.
+\newcommand{\noun}[1]{\textsc{#1}}
+\let\SF@@footnote\footnote
+\def\footnote{\ifx\protect\@typeset@protect
+    \expandafter\SF@@footnote
+  \else
+    \expandafter\SF@gobble@opt
+  \fi
+}
+\expandafter\def\csname SF@gobble@opt \endcsname{\@ifnextchar[%]
+  \SF@gobble@twobracket
+  \@gobble
+}
+\edef\SF@gobble@opt{\noexpand\protect
+  \expandafter\noexpand\csname SF@gobble@opt \endcsname}
+\def\SF@gobble@twobracket[#1]#2{}
+%% Because html converters don't know tabularnewline
+\providecommand{\tabularnewline}{\\}
+\floatstyle{ruled}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Textclass specific LaTeX commands.
+\numberwithin{section}{chapter}
+\numberwithin{equation}{section}
+\numberwithin{figure}{section}
+ \newtheorem*{defn*}{Definizione}
+ \newtheorem{defin}{Definizione}
+  \newtheorem*{prop*}{Proposizione}
+  \newtheorem*{problem*}{Problema}
+  \newtheorem{problem}{Problema}[section]
+  \newtheorem*{example*}{Esempio}
+  \newtheorem{example}{Esempio}[chapter]
+  \newtheorem{ex}{Esercizio}[chapter]
+  \newtheorem*{lem*}{Lemma}
+  \newtheorem*{thm*}{Teorema}
+\newtheorem{thm}{Teorema}[section]
+\newtheorem{coroll}{Corollario}[section]
+\newtheorem{theorem}{Teorema}[section]
+  \newtheorem{prop}{Proposizione}[section]
+  \newtheorem{lem}{Lemma}[section]
+  \newtheorem{defn}{Definizione}[section]
+  
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LSTLISTINGs Settings.
+\usepackage{listingsutf8}
+
+%TEXFONTS
+\usepackage[scaled]{beramono}
+
+%%FLOATING LATEXs
+\newfloat{algorithm}{tbp}{loa}
+\floatname{algorithm}{Listato}
+
+  \definecolor{lightgray}{gray}{0.95}
+\DeclareCaptionFont{white}{\color{white}}
+\DeclareCaptionFont{lightgray}{\color{lightgray}}
+
+ \lstset{
+         basicstyle=\footnotesize\ttfamily, % Standardschrift
+         %numbers=left,               % Ort der Zeilennummern
+         numberstyle=\tiny,          % Stil der Zeilennummern
+         %stepnumber=2,               % Abstand zwischen den Zeilennummern
+         extendedchars=true,         %
+         keywordstyle=\bfseries,
+    	 frame=single,
+         stringstyle=\color{red}\ttfamily, % Farbe der String
+         showspaces=false,           % Leerzeichen anzeigen ?
+         showtabs=false,             % Tabs anzeigen ?
+         inputencoding=utf8/latin1,
+         %backgroundcolor=\color{lightgray},
+         showstringspaces=false,      % Leerzeichen in Strings anzeigen ?  
+         frameround=fttt,
+         backgroundcolor=\color{lightgray},
+         xrightmargin=-13pt,
+         breaklines=true
+ }
+ \lstloadlanguages{% Check Dokumentation for further languages ...
+         %[Visual]Basic
+         %Pascal
+         %C
+         %C++
+         %XML
+         %HTML
+         Java
+ }
+    %\DeclareCaptionFont{blue}{\color{blue}} 
+
+  %\captionsetup[lstlisting]{singlelinecheck=false, labelfont={blue}, textfont={blue}}
+  \usepackage{caption}
+
+\DeclareCaptionFormat{listing}{\colorbox[cmyk]{0.43, 0.35, 0.35,0.01}{\parbox{\textwidth}{\hspace{15pt}#1#2#3}}}
+\captionsetup[lstlisting]{format=listing,labelfont=white,textfont=white, singlelinecheck=false, margin=0pt, font={bf,footnotesize}}
+
+%%Visual Basic
+\lstset{defaultdialect=[Visual]Basic}
+
+%%OCAML
+\lstnewenvironment{ocaml}[1][]{\lstset{language=[Objective]Caml}}{}
+
+
+%%CONCURRENT G
+\lstdefinelanguage{concurrentg}  {
+morekeywords={while, cobegin, coend, do, if, true, false, else, void, int, new, for, shared, let, rec, then, to, match, with, raise, done, begin, end, not, each, in, return},
+morecomment=[s][]{/*}{*/},
+morestring=[b][\color{red}]"
+}
+\lstnewenvironment{concurrentg}[1][]{\lstset{language=concurrentg,#1}}{}
+
+
+
+%% SCHEME
+\lstdefinelanguage{Scheme}  {
+morekeywords={set,first,cons,make,struct,cond,true,false},
+morecomment=[l]{;},
+}
+\lstnewenvironment{scheme}[1][]{\lstset{language=Scheme,#1}}{}
+
+
+\lstnewenvironment{pascal}[1][]{\lstset{language=Pascal,#1}}{}
+\lstnewenvironment{clang}[1][]{\lstset{language=C,#1}}{}
+
+\lstnewenvironment{bash}[1][]{\lstset{language=bash,#1}}{}
+
+\lstnewenvironment{xml}[1][]{\lstset{language=XML,#1}}{}
+\lstnewenvironment{java}[1][]{\lstset{language=Java,#1}}{}
+\lstnewenvironment{cpp}[1][]{\lstset{language=C++,#1}}{}
+
+
+%%PSEUDOCODE
+\lstnewenvironment{pseudolus}[1][]{\lstset{
+morekeywords={For, Each, if, then, in, End, for, to, do, var, else},
+frame=shadowbox,
+#1
+}}{}
+\newenvironment{pseudolang}{\begin{center}\begin{pseudolus}}{\end{pseudolus}\end{center}}
+
+
+
+
+%%CENTER LINE CODE
+\newcommand{\shcode}[1]{\begin{center}\texttt{#1}\end{center}}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% mie definizoni 
+\newcommand{\diam}{\item[$\diamond$]} % punto elenco diamante
+\newcommand{\cerc}{\item[$\circ$]} % punto elenco cerchio
+\newcommand{\suspence}{[\dots]} % ellissi
+\newcommand{\opquote}{«}
+\newcommand{\clquote}{»}
+\newcommand{\reffig}{Figura}
+\newcommand{\singlediam}[1]{\begin{itemize}\diam #1\end{itemize}} % un solo punto elenco con diamante
+\newcommand{\ttilde}{\textasciitilde{}  } % scrittura semplificata della tilde
+\renewcommand{\*}{\cdot}
+\renewcommand{\d}{\$}
+\renewcommand{\emph}{\textit}
+\newcommand{\myquote}[2]{«\emph{#1}»(#2)}
+\newcommand{\myquotu}[1]{«\emph{#1}»}
+\newcommand{\textbb}[1]{$\mathbb{#1}$}
+
+\newcommand{\nat}{\mathbb N}
+\newcommand{\real}{\mathbb R}
+\newcommand{\bool}{\mathbb B}
+\newcommand{\lang}{\mathcal L}
+\newcommand{\down}{\downarrow}
+\newcommand{\up}{\uparrow}
+\newcommand{\IIF}{\Leftrightarrow}
+\newcommand{\iif}{\leftrightarrow}
+
+
+%% Form Net
+\newsavebox{\sembox}
+\newlength{\semwidth}
+\newlength{\boxwidth}
+
+\newcommand{\Sem}[1]{%
+\sbox{\sembox}{\ensuremath{#1}}%
+\settowidth{\semwidth}{\usebox{\sembox}}%
+\sbox{\sembox}{\ensuremath{\left[\usebox{\sembox}\right]}}%
+\settowidth{\boxwidth}{\usebox{\sembox}}%
+\addtolength{\boxwidth}{-\semwidth}%
+\left[\hspace{-0.3\boxwidth}%
+\usebox{\sembox}%
+\hspace{-0.3\boxwidth}\right]%
+}
+
+
+
+ % definizione dell'elenco con le lettere (wikipedia.en)
+%\arabic 	1, 2, 3 ...
+%\alph 	a, b, c ...
+%\Alph 	A, B, C ...
+%\roman 	i, ii, iii ...
+%\Roman 	I, II, III ...
+%\fnsymbol 	Aimed at footnotes (see below), but prints a sequence of symbols.
+ % come consigliato dalla Nasa (http://www.giss.nasa.gov/tools/latex/ltx-222.html):
+ % \renewcommand{\labelenumi}{\emph{(\alph{enumi})}}
+\newenvironment{itmletters}[1]{\begin{enumerate}\renewcommand{\labelenumi}{\emph{#1}}}
+                              {\end{enumerate}}
+\newenvironment{stab}{\begin{table}\begin{shaded}}
+                              {\end{shaded}\end{table}}
+ % questo comando crea l'elenco con i letterali definiti sopra
+\newcommand{\atm}{\alph{enumi}}
+ % questo comando serve per indicare in quello sopra l'enumerazione della prima serie di numeri
+ % come di 
+\newcommand{\itm}{\roman{enumi}}
+\newcommand{\cent}[1]{\begin{center}#1\end{center}}
+\newcommand{\textcal}[1]{$\mathcal{#1}$}
+                        
+\newcommand{\startfrom}[1]{\setcounter{enumi}{#1}}
+\newcommand{\ttitem}[1]{\item \texttt{#1}}
+\newcommand{\tleq}{$\leq$} 
+\newcommand{\tgeq}{$\geq$}
+\newcommand{\lng}{\mathcal L}
+\newcommand{\Jj}{$\drsh$}
+
+\newcommand{\st}[1]{\tt{\small{ #1}}}
+
+\newtheorem{prob}{Problema}[section]
+\newtheorem{xmpl}{Esempio}[section]
+\newtheorem{propr}{Proprietà}[section]
+
+
+\newcommand{\AOSP}{\texttt{\small \$AOSP}}
+\newcommand{\PJA}{\texttt{\small \$PJA}}
+\long\def\syfoot[#1]#2{\begingroup%
+\def\thefootnote{\fnsymbol{footnote}}\footnote[#1]{#2}\endgroup} 
+
+%%% problema: questa tecnica tuttavia scalza le eventuali immagini presenti
+%%% all'interno del documento corrente.
+\newcommand{\teorema}[3]{
+
+\medskip
+
+	\fbox{\parbox{1\linewidth}{
+	\begin{#1} #2 \end{#1}
+	\begin{proof} #3 \end{proof}
+	}}
+	
+\medskip
+
+}
+\newcommand{\tteorema}[4]{
+\medskip
+
+
+	\fbox{\parbox{1\linewidth}{
+	\begin{#1}[#2] #3 \end{#1}
+	\begin{proof} #4 \end{proof}
+	}}
+\medskip
+
+
+}
+
+\hypersetup{
+ pdfsubject={Progetto},
+ pdfkeywords={informatica}}
+
+\renewcommand\lstlistingname{Listato }
+\renewcommand\lstlistlistingname{Listati}
+
+\makeindex
+\makeatother
+\dominitoc
